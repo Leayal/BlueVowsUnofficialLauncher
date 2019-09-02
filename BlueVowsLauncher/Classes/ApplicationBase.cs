@@ -390,20 +390,5 @@ namespace Leayal.ApplicationController
                 }
             }
         }
-
-        /// <summary>Determines whether the specified object is a derived of <see cref="ApplicationBase"/> and has the same unique ID.</summary>
-        /// <param name="obj">The object to compare with the current object.</param>
-        /// <returns>true if the specified object is a derived of <see cref="ApplicationBase"/> and has the same unique ID; otherwise, false.</returns>
-        public override bool Equals(object obj)
-        {
-            if (string.IsNullOrEmpty(this._instanceID))
-                return false;
-
-            if (obj is ApplicationBase application)
-            {
-                return (this._instanceID == application._instanceID);
-            }
-            return false;
-        }
     }
 }

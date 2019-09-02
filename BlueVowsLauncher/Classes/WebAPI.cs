@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Linq;
+using System.Buffers;
+using System.Threading;
 
 namespace BlueVowsLauncher.Classes
 {
@@ -85,24 +87,21 @@ namespace BlueVowsLauncher.Classes
             }
         }
 
-        public Task<bool> DownloadFile(Uri url, Stream output) => this.DownloadFile(url, output, null);
-
-        public Task<bool> DownloadFile(Uri url, Stream output, Func<long, long, bool> progressReport) => this.DownloadFile(url, 0, output, progressReport);
-
-        public Task<bool> DownloadFile(Uri url, long startingByte, Stream output) => this.DownloadFile(url, startingByte, output, null);
-
-        public async Task<bool> DownloadFile(Uri url, long startingByte, Stream output, Func<long, long, bool> progressReport)
+        public async Task<bool> DownloadFile(Uri url, long? startingByte, Stream output, Action<long, long> progressReport, CancellationToken cancellationToken = default)
         {
             HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Get, url);
             msg.Headers.Accept.ParseAdd("*/*");
-            msg.Headers.Range = new RangeHeaderValue(startingByte, null);
-            using (var response = await this.client.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead))
+            if (startingByte.HasValue)
+            {
+                msg.Headers.Range = new RangeHeaderValue(startingByte.Value, null);
+            }
+            using (var response = await this.client.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead, cancellationToken))
             using (var stream = await response.EnsureSuccessStatusCode().Content.ReadAsStreamAsync())
             {
                 if (progressReport == null)
                 {
-                    await stream.CopyToAsync(output, 4096);
-                    return true;
+                    await stream.CopyToAsync(output, 4096 * 2, cancellationToken);
+                    return !cancellationToken.IsCancellationRequested;
                 }
                 else
                 {
@@ -122,27 +121,30 @@ namespace BlueVowsLauncher.Classes
                     }
                     if (totalToDownload == -1)
                     {
-                        await stream.CopyToAsync(output, 4096);
-                        return true;
+                        await stream.CopyToAsync(output, 4096 * 2, cancellationToken);
+                        return !cancellationToken.IsCancellationRequested;
                     }
                     else
                     {
-                        return await Task.Run(() =>
+                        const int size = 4096 * 2;
+                        progressReport.Invoke(0, totalToDownload);
+                        if (progressed != 0)
                         {
-                            byte[] buffer = new byte[4096];
-                            int byteRead = stream.Read(buffer, 0, 4096);
-                            while (byteRead > 0)
+                            progressReport.Invoke(progressed, 0);
+                        }
+                        using (var pooledBuffer = MemoryPool<byte>.Shared.Rent(size))
+                        {
+                            int byteRead = await stream.ReadAsync(pooledBuffer.Memory, cancellationToken);
+                            while (byteRead > 0 && !cancellationToken.IsCancellationRequested)
                             {
                                 progressed += byteRead;
-                                output.Write(buffer, 0, byteRead);
-                                if (!progressReport.Invoke(progressed, totalToDownload))
-                                {
-                                    return false;
-                                }
-                                byteRead = stream.Read(buffer, 0, 4096);
+                                await output.WriteAsync(pooledBuffer.Memory.Slice(0, byteRead), cancellationToken);
+                                progressReport.Invoke(progressed, 0);
+                                byteRead = await stream.ReadAsync(pooledBuffer.Memory, cancellationToken);
                             }
-                            return true;
-                        });
+                            await output.FlushAsync();
+                        }
+                        return !cancellationToken.IsCancellationRequested;
                     }
                 }
             }

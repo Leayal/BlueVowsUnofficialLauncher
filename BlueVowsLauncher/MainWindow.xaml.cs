@@ -130,10 +130,20 @@ namespace BlueVowsLauncher
                     // var md5s = packageObj.GetProperty("md5").GetProperty("gwphone_windows").GetString();
                     var downloadUrl = packageObj.GetProperty("packageUrl").GetString();
                     var updateVersion = packageObj.GetProperty("tar_version").GetString();
+                    if (!string.IsNullOrEmpty(updateVersion))
+                    {
+                        updateVersion = updateVersion.Trim();
+                    }
 
                     if (!string.Equals(this.GetClientVersion(), updateVersion, StringComparison.OrdinalIgnoreCase))
                     {
                         bool isContinue = string.Equals(this.GetDownloadingClientVersion(), updateVersion, StringComparison.OrdinalIgnoreCase);
+
+                        if (!isContinue)
+                        {
+                            await File.WriteAllTextAsync(Path.Combine(RuntimeVars.RootPath, "clsy.tmp.version"), updateVersion);
+                        }
+
                         bool isCompleted = false;
                         string targetToDelete;
                         using (var fs = new FileStream(Path.Combine(RuntimeVars.RootPath, "clsy.tmp"), isContinue ? FileMode.OpenOrCreate : FileMode.Create, FileAccess.ReadWrite, FileShare.Read))
@@ -142,13 +152,13 @@ namespace BlueVowsLauncher
                             this.mainProgressBar.Value = 0;
                             this.mainProgressBar.IsIndeterminate = false;
                             this.mainProgressText.Text = $"Downloading client v{updateVersion}";
-                            isCompleted = await this.apiClient.DownloadFile(new Uri(downloadUrl), isContinue ? fs.Length : 0, fs, this.ProgressBarThingie);
+                            isCompleted = await this.apiClient.DownloadFile(new Uri(downloadUrl), isContinue ? fs.Length : 0, fs, this.ProgressBarThingie, this.cancelSrc.Token);
                             await fs.FlushAsync();
 
                             if (isCompleted)
                             {
                                 this.mainProgressText.Text = $"Unpacking client v{updateVersion}";
-                                await Task.Run(() =>
+                                await Task.Run(async () =>
                                 {
                                     fs.Seek(0, SeekOrigin.Begin);
                                     using (var zip = new System.IO.Compression.ZipArchive(fs, System.IO.Compression.ZipArchiveMode.Read))
@@ -156,27 +166,29 @@ namespace BlueVowsLauncher
                                         string destinationDir = Path.Combine(RuntimeVars.RootPath, "clsy");
                                         Directory.Delete(destinationDir, true);
                                         destinationDir = Directory.CreateDirectory(destinationDir).FullName;
-                                        byte[] buffer = new byte[4096];
-                                        foreach (var entry in zip.Entries)
+                                        using (var pooledBuffer = MemoryPool<byte>.Shared.Rent(4096 * 2))
                                         {
-                                            string thePath = Path.Combine(destinationDir, entry.FullName);
-                                            Directory.CreateDirectory(Path.GetDirectoryName(thePath));
-                                            using (var destFs = File.Open(thePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
-                                            using (var stream = entry.Open())
+                                            foreach (var entry in zip.Entries)
                                             {
-                                                destFs.SetLength(entry.Length);
-                                                int read = stream.Read(buffer, 0, 4096);
-                                                while (read > 0)
+                                                string thePath = Path.Combine(destinationDir, entry.FullName);
+                                                Directory.CreateDirectory(Path.GetDirectoryName(thePath));
+                                                using (var destFs = File.Open(thePath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
+                                                using (var stream = entry.Open())
                                                 {
-                                                    destFs.Write(buffer, 0, read);
-                                                    read = stream.Read(buffer, 0, 4096);
+                                                    destFs.SetLength(entry.Length);
+                                                    int read = await stream.ReadAsync(pooledBuffer.Memory);
+                                                    while (read > 0)
+                                                    {
+                                                        await destFs.WriteAsync(pooledBuffer.Memory.Slice(0, read));
+                                                        read = await stream.ReadAsync(pooledBuffer.Memory);
+                                                    }
+                                                    await destFs.FlushAsync();
                                                 }
-                                                destFs.Flush();
                                             }
                                         }
                                     }
                                 });
-                                await File.WriteAllTextAsync(Path.Combine(RuntimeVars.RootPath, "clsy.version"), updateVersion.Trim());
+                                await File.WriteAllTextAsync(Path.Combine(RuntimeVars.RootPath, "clsy.version"), updateVersion);
                             }
                         }
                         if (isCompleted)
@@ -200,6 +212,10 @@ namespace BlueVowsLauncher
                     MessageBox.Show(this, $"Server response with code {responseCode}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
+            catch (TaskCanceledException)
+            {
+
+            }
             catch (InvalidGameScreenSize ex)
             {
                 MessageBox.Show(this, ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -211,23 +227,19 @@ namespace BlueVowsLauncher
             this.tabMainMenu.IsSelected = true;
         }
 
-        private long theTotal = -1;
-        private bool ProgressBarThingie(long current, long total)
+        private void ProgressBarThingie(long current, long total)
         {
-            if (this.cancelSrc.IsCancellationRequested)
-            {
-                return false;
-            }
             this.Dispatcher.BeginInvoke(new ProgressBarUpdate(delegate
             {
-                if (theTotal != total)
+                if (total == 0)
                 {
-                    theTotal = total;
+                    this.mainProgressBar.Value = current;
+                }
+                else
+                {
                     this.mainProgressBar.Maximum = total;
                 }
-                this.mainProgressBar.Value = current;
             }));
-            return true;
         }
 
         delegate void ProgressBarUpdate();
@@ -336,26 +348,28 @@ namespace BlueVowsLauncher
         private async Task<bool> DownloadLocaleEmulator(string destination)
         {
             MemoryStream tmpStream = new MemoryStream();
-            if (await this.apiClient.DownloadFile(new Uri(BaseUrl + "/LocaleEmulator.txt"), tmpStream, this.ProgressBarThingie))
+            if (await this.apiClient.DownloadFile(new Uri(BaseUrl + "/LocaleEmulator.txt"), null, tmpStream, this.ProgressBarThingie, this.cancelSrc.Token))
             {
                 tmpStream.Position = 0;
                 using (var zipFile = new System.IO.Compression.ZipArchive(tmpStream, System.IO.Compression.ZipArchiveMode.Read))
                 {
                     destination = Directory.CreateDirectory(destination).FullName;
-                    byte[] buffer = new byte[4096];
-                    foreach (var entry in zipFile.Entries)
+                    using (var pooledBuffer = MemoryPool<byte>.Shared.Rent(4096 * 2))
                     {
-                        string destFile = Path.Combine(destination, entry.FullName);
-                        using (var fs = File.Create(destFile))
-                        using (var entryStream = entry.Open())
+                        foreach (var entry in zipFile.Entries)
                         {
-                            int read = await entryStream.ReadAsync(buffer, 0, 4096);
-                            while (read > 0)
+                            string destFile = Path.Combine(destination, entry.FullName);
+                            using (var fs = File.Create(destFile))
+                            using (var entryStream = entry.Open())
                             {
-                                await fs.WriteAsync(buffer, 0, read);
-                                read = await entryStream.ReadAsync(buffer, 0, 4096);
+                                int read = await entryStream.ReadAsync(pooledBuffer.Memory);
+                                while (read > 0)
+                                {
+                                    await fs.WriteAsync(pooledBuffer.Memory.Slice(0, read));
+                                    read = await entryStream.ReadAsync(pooledBuffer.Memory);
+                                }
+                                await fs.FlushAsync();
                             }
-                            await fs.FlushAsync();
                         }
                     }
                 }
