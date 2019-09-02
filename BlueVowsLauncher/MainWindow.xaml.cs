@@ -26,7 +26,7 @@ namespace BlueVowsLauncher
     {
         private WebAPI apiClient;
         private CancellationTokenSource cancelSrc;
-        const string BaseUrl = "";
+        const string BaseUrl = "https://raw.githubusercontent.com/Leayal/BlueVowsUnofficialLauncher/master";
 
         public MainWindow()
         {
