@@ -1,0 +1,68 @@
+﻿<mah:MetroWindow x:Class="BlueVowsLauncher.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
+        xmlns:ctrl="clr-namespace:BlueVowsLauncher.Controls"
+        xmlns:local="clr-namespace:BlueVowsLauncher"
+        mc:Ignorable="d"
+        Title="Blue Vows Unofficial Launcher" x:Name="myself" Height="182" Width="300" Loaded="Window_Loaded" ResizeMode="CanMinimize" WindowStartupLocation="CenterScreen" ShowTitleBar="False">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="26"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Grid IsHitTestVisible="False">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Image RenderOptions.BitmapScalingMode="Fant" MaxHeight="26" Source="{Binding ElementName=myself,Mode=OneWay,Path=Icon}"/>
+            <TextBlock VerticalAlignment="Center" Grid.Column="1" Text="{Binding ElementName=myself,Mode=OneWay,Path=Title}"/>
+        </Grid>
+        <mah:MetroAnimatedTabControl Grid.Row="1">
+            <mah:MetroTabItem>
+                <mah:ProgressRing />
+            </mah:MetroTabItem>
+            <mah:MetroTabItem x:Name="tabProgressing">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <ProgressBar IsIndeterminate="True" x:Name="mainProgressBar"/>
+                    <TextBlock x:Name="mainProgressText" VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center"></TextBlock>
+                    <Button Grid.Row="1" VerticalAlignment="Center" Content="Cancel" Click="ButtonCancel_Click" />
+                </Grid>
+            </mah:MetroTabItem>
+            <mah:MetroTabItem x:Name="tabMainMenu">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <GroupBox Header="Screen size">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                                <RowDefinition/>
+                            </Grid.RowDefinitions>
+                            <TextBlock VerticalAlignment="Center" HorizontalAlignment="Right">Screen Width:</TextBlock>
+                            <TextBlock Grid.Row="1" VerticalAlignment="Center" HorizontalAlignment="Right">Screen Height:</TextBlock>
+                            <ctrl:PlaceholderTextBox Grid.Column="1" Placeholder="Width" x:Name="gameClient_Width" MaxLength="5" Padding="1" />
+                            <ctrl:PlaceholderTextBox Grid.Column="1" Grid.Row="1" Placeholder="Height" x:Name="gameClient_Height" MaxLength="5" Padding="1" />
+                            <CheckBox Grid.Row="2" Grid.Column="1" x:Name="gameClient_LocaleEmu" Content="Use LocaleEmulator" Padding="1" />
+                        </Grid>
+                    </GroupBox>
+                    <Button Grid.Row="1" Click="ButtonStartGame_Click">Launch Game</Button>
+                </Grid>
+            </mah:MetroTabItem>
+        </mah:MetroAnimatedTabControl>
+    </Grid>
+</mah:MetroWindow>
