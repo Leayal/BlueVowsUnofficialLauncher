@@ -35,11 +35,13 @@ namespace BlueVowsLauncher.Classes
             };
             this.client = new HttpClient(this.handler);
             this.client.DefaultRequestHeaders.UserAgent.ParseAdd("Launcher");
-
             this.preDefinedSign = new List<(int, string)>(3)
             {
                 (1567397570, "6a25c4df1c455532108577f3a7fcc504"),
-                (1567399687, "9b16b4ccf6682753f29ef19fe26e487a")
+                (1567399687, "9b16b4ccf6682753f29ef19fe26e487a"),
+                (1567432250, "f1417a116dbcccf832e00fc45bec502d"),
+                (1567432321, "b79bf513d2414046f5a0dbdd7744b95c"),
+                (1567397570, "6a25c4df1c455532108577f3a7fcc504")
             };
         }
 
@@ -94,52 +96,53 @@ namespace BlueVowsLauncher.Classes
             HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Get, url);
             msg.Headers.Accept.ParseAdd("*/*");
             msg.Headers.Range = new RangeHeaderValue(startingByte, null);
-            using (var response = await this.client.SendAsync(msg))
+            using (var response = await this.client.SendAsync(msg, HttpCompletionOption.ResponseHeadersRead))
+            using (var stream = await response.EnsureSuccessStatusCode().Content.ReadAsStreamAsync())
             {
-                using (var stream = await response.EnsureSuccessStatusCode().Content.ReadAsStreamAsync())
+                if (progressReport == null)
                 {
-                    if (progressReport == null)
+                    await stream.CopyToAsync(output, 4096);
+                    return true;
+                }
+                else
+                {
+                    long progressed = 0;
+                    long totalToDownload = -1;
+                    if (response.Content.Headers.ContentRange.HasRange)
+                    {
+                        if (response.Content.Headers.ContentRange.From.HasValue && response.Content.Headers.ContentRange.To.HasValue)
+                        {
+                            progressed = response.Content.Headers.ContentRange.From.Value;
+                            totalToDownload = response.Content.Headers.ContentRange.To.Value;
+                        }
+                    }
+                    if (totalToDownload == -1 && response.Content.Headers.ContentLength.HasValue)
+                    {
+                        totalToDownload = response.Content.Headers.ContentLength.Value;
+                    }
+                    if (totalToDownload == -1)
                     {
                         await stream.CopyToAsync(output, 4096);
                         return true;
                     }
                     else
                     {
-                        long progressed = 0;
-                        long totalToDownload = -1;
-                        if (response.Content.Headers.ContentRange.HasRange)
-                        {
-                            if (response.Content.Headers.ContentRange.From.HasValue && response.Content.Headers.ContentRange.To.HasValue)
-                            {
-                                progressed = response.Content.Headers.ContentRange.From.Value;
-                                totalToDownload = response.Content.Headers.ContentRange.To.Value;
-                            }
-                        }
-                        if (totalToDownload == -1 && response.Content.Headers.ContentLength.HasValue)
-                        {
-                            totalToDownload = response.Content.Headers.ContentLength.Value;
-                        }
-                        if (totalToDownload == -1)
-                        {
-                            await stream.CopyToAsync(output, 4096);
-                            return true;
-                        }
-                        else
+                        return await Task.Run(() =>
                         {
                             byte[] buffer = new byte[4096];
-                            int byteRead = await stream.ReadAsync(buffer, 0, 4096);
+                            int byteRead = stream.Read(buffer, 0, 4096);
                             while (byteRead > 0)
                             {
                                 progressed += byteRead;
-                                await output.WriteAsync(buffer, 0, byteRead);
+                                output.Write(buffer, 0, byteRead);
                                 if (!progressReport.Invoke(progressed, totalToDownload))
                                 {
                                     return false;
                                 }
-                                byteRead = await stream.ReadAsync(buffer, 0, 4096);
+                                byteRead = stream.Read(buffer, 0, 4096);
                             }
                             return true;
-                        }
+                        });
                     }
                 }
             }

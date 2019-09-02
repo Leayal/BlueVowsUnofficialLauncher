@@ -127,7 +127,7 @@ namespace BlueVowsLauncher
                 if (responseCode == "0")
                 {
                     var packageObj = something.RootElement.GetProperty("base").GetProperty("package");
-                    var md5s = packageObj.GetProperty("md5").GetProperty("gwphone_windows").GetString();
+                    // var md5s = packageObj.GetProperty("md5").GetProperty("gwphone_windows").GetString();
                     var downloadUrl = packageObj.GetProperty("packageUrl").GetString();
                     var updateVersion = packageObj.GetProperty("tar_version").GetString();
 
@@ -223,7 +223,7 @@ namespace BlueVowsLauncher
                 if (theTotal != total)
                 {
                     theTotal = total;
-                    this.mainProgressBar.Value = total;
+                    this.mainProgressBar.Maximum = total;
                 }
                 this.mainProgressBar.Value = current;
             }));
